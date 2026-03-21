@@ -1,6 +1,7 @@
 from ir_parser import parse_ir
 from liveness import compute_liveness
 from interference_graph import build_interference_graph
+from visualize import draw_graph
 
 instructions = parse_ir("ir.txt")
 
@@ -19,3 +20,5 @@ G = build_interference_graph(instructions, live_out)
 print("Interference Graph Edges\n")
 for edge in G.edges():
     print(edge)
+
+draw_graph(G)

@@ -1,0 +1,7 @@
+a = load
+b = load
+c = a b
+d = c b
+e = d a
+a = e b
+use a
