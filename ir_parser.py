@@ -25,35 +25,40 @@ def is_variable(token):
         return False
     return token[0].isalpha() or token[0] == "_"
 
+
+def normalize_token(token):
+    return token.strip().strip(",;()")
+
 def parse_ir(filename):
     instructions = []
 
     with open(filename, "r") as f:
         for line in f:
             tokens = line.strip().split()
+            normalized = [normalize_token(tok) for tok in tokens]
 
             if not tokens:
                 continue
 
             # assignment
-            if "=" in tokens:
-                defined = tokens[0]
-                used = [tok for tok in tokens[2:] if is_variable(tok)]
+            if "=" in normalized:
+                defined = normalized[0] if is_variable(normalized[0]) else None
+                used = [tok for tok in normalized[2:] if is_variable(tok)]
                 instructions.append(Instruction(defined, used))
 
             # use statement
-            elif tokens[0].lower() == "use":
-                used = [tokens[1]] if len(tokens) > 1 and is_variable(tokens[1]) else []
+            elif normalized[0].lower() == "use":
+                used = [normalized[1]] if len(normalized) > 1 and is_variable(normalized[1]) else []
                 instructions.append(Instruction(None, used))
 
             # load definition (e.g. "Load a")
-            elif tokens[0].lower() == "load":
-                defined = tokens[1] if len(tokens) > 1 and is_variable(tokens[1]) else None
+            elif normalized[0].lower() == "load":
+                defined = normalized[1] if len(normalized) > 1 and is_variable(normalized[1]) else None
                 instructions.append(Instruction(defined, []))
 
             # single token definition (e.g. "a")
             else:
-                defined = tokens[0] if len(tokens) == 1 and is_variable(tokens[0]) else None
+                defined = normalized[0] if len(normalized) == 1 and is_variable(normalized[0]) else None
                 instructions.append(Instruction(defined, []))
 
     return instructions

@@ -1,7 +1,12 @@
-a = load
-b = load
-c = a b
-d = c b
-e = d a
-a = e b
-use a
+t1 = load a
+t2 = load b
+t3 = load c
+t4 = load d
+t5 = load e
+
+t6 = add t1, t2
+t7 = add t3, t4
+t8 = add t6, t7
+t9 = add t8, t5
+
+use t9
