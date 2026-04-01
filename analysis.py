@@ -1,18 +1,30 @@
-"""Multi-epoch benchmark analysis for register-allocation graph coloring.
+"""Research-grade multi-epoch analysis for register-allocation benchmarking.
 
-Runs the synthetic benchmark multiple times with different seeds, averages the
-results, and displays summary graphs for runtime and spill behavior.
+Adds:
+- confidence intervals and standard deviation reporting
+- paired sign tests on per-run quality scores
+- register-budget sweep (2, 4, 8, 16)
+- focused workload bars with 95% CI for a selected budget
 """
 
 from collections import defaultdict
+from math import comb, sqrt
+import statistics
 
 import matplotlib.pyplot as plt
 
 from benchmark import _build_cpu_like_interference_graph, benchmark_algorithms
 
 
-EPOCHS = 20
-NUM_REGISTERS = 4
+EPOCHS = 2
+REGISTER_BUDGETS = [2, 4, 8, 16]
+FOCUS_BUDGET = 4
+
+ALGORITHMS = {
+    "greedy": {"label": "Greedy", "color": "#1f77b4"},
+    "fpt": {"label": "FPT Random Walk", "color": "#ff7f0e"},
+    "dp": {"label": "DP B&B", "color": "#2ca02c"},
+}
 
 WORKLOADS = [
     # name, virtual regs, instructions, loop regions, branch prob, call freq, seed
@@ -28,7 +40,7 @@ def _score(colored, spills):
     return colored - 3 * spills
 
 
-def _run_epoch(epoch_index, seed_offset=0):
+def _run_epoch(epoch_index, num_registers, seed_offset=0):
     epoch_results = []
 
     for name, regs, inst, loops, branch_p, call_f, base_seed in WORKLOADS:
@@ -41,126 +53,284 @@ def _run_epoch(epoch_index, seed_offset=0):
             call_frequency=call_f,
             seed=seed,
         )
-        epoch_results.append(benchmark_algorithms(graph, num_registers=NUM_REGISTERS, name=name))
+        epoch_results.append(
+            benchmark_algorithms(graph, num_registers=num_registers, name=name)
+        )
 
     return epoch_results
 
 
-def _aggregate_results(all_epoch_results):
-    totals = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
-    counts = defaultdict(int)
-
-    for epoch_results in all_epoch_results:
-        for result in epoch_results:
-            name = result["name"]
-            counts[name] += 1
-            for algorithm in ("greedy", "fpt", "dp"):
-                totals[name][algorithm]["time"] += result[algorithm]["time"]
-                totals[name][algorithm]["colored"] += result[algorithm]["colored"]
-                totals[name][algorithm]["spills"] += result[algorithm]["spills"]
-                totals[name][algorithm]["colors"] += result[algorithm]["colors"]
-
-    averaged = []
-    for name, _, _, _, _, _, _ in WORKLOADS:
-        count = counts[name]
-        averaged.append(
-            {
-                "name": name,
-                "greedy": {
-                    "time": totals[name]["greedy"]["time"] / count,
-                    "colored": totals[name]["greedy"]["colored"] / count,
-                    "spills": totals[name]["greedy"]["spills"] / count,
-                    "colors": totals[name]["greedy"]["colors"] / count,
-                },
-                "fpt": {
-                    "time": totals[name]["fpt"]["time"] / count,
-                    "colored": totals[name]["fpt"]["colored"] / count,
-                    "spills": totals[name]["fpt"]["spills"] / count,
-                    "colors": totals[name]["fpt"]["colors"] / count,
-                },
-                "dp": {
-                    "time": totals[name]["dp"]["time"] / count,
-                    "colored": totals[name]["dp"]["colored"] / count,
-                    "spills": totals[name]["dp"]["spills"] / count,
-                    "colors": totals[name]["dp"]["colors"] / count,
-                },
-            }
+def _init_series_store():
+    return defaultdict(
+        lambda: defaultdict(
+            lambda: defaultdict(lambda: defaultdict(list))
         )
+    )
 
-    return averaged
+
+def _append_epoch_results(series_store, epoch_results, num_registers):
+    for result in epoch_results:
+        name = result["name"]
+        for algorithm in ALGORITHMS:
+            series_store[num_registers][name][algorithm]["time"].append(
+                result[algorithm]["time"]
+            )
+            series_store[num_registers][name][algorithm]["colored"].append(
+                result[algorithm]["colored"]
+            )
+            series_store[num_registers][name][algorithm]["spills"].append(
+                result[algorithm]["spills"]
+            )
+            series_store[num_registers][name][algorithm]["colors"].append(
+                result[algorithm]["colors"]
+            )
+            score = _score(result[algorithm]["colored"], result[algorithm]["spills"])
+            series_store[num_registers][name][algorithm]["score"].append(score)
 
 
-def _plot_average_results(averaged_results, epochs):
-    names = [result["name"] for result in averaged_results]
-    x = range(len(names))
+def _mean_std_ci95(values):
+    n = len(values)
+    if n == 0:
+        return {"mean": 0.0, "std": 0.0, "ci95": 0.0, "n": 0}
+
+    mean = statistics.mean(values)
+    if n == 1:
+        return {"mean": mean, "std": 0.0, "ci95": 0.0, "n": 1}
+
+    std = statistics.stdev(values)
+    ci95 = 1.96 * std / sqrt(n)
+    return {"mean": mean, "std": std, "ci95": ci95, "n": n}
+
+
+def _aggregate_results(series_store):
+    summary = defaultdict(lambda: defaultdict(dict))
+    for num_registers in REGISTER_BUDGETS:
+        for name, _, _, _, _, _, _ in WORKLOADS:
+            for algorithm in ALGORITHMS:
+                summary[num_registers][name][algorithm] = {
+                    metric: _mean_std_ci95(
+                        series_store[num_registers][name][algorithm][metric]
+                    )
+                    for metric in ("time", "colored", "spills", "colors", "score")
+                }
+    return summary
+
+
+def _paired_sign_test(series_a, series_b):
+    wins_a = 0
+    wins_b = 0
+    for a_value, b_value in zip(series_a, series_b):
+        if a_value > b_value:
+            wins_a += 1
+        elif b_value > a_value:
+            wins_b += 1
+
+    non_ties = wins_a + wins_b
+    if non_ties == 0:
+        return 1.0, wins_a, wins_b, non_ties
+
+    smaller_tail = min(wins_a, wins_b)
+    tail_prob = 0.0
+    for i in range(smaller_tail + 1):
+        tail_prob += comb(non_ties, i) * (0.5 ** non_ties)
+
+    p_value = min(1.0, 2.0 * tail_prob)
+    return p_value, wins_a, wins_b, non_ties
+
+
+def _run_significance_report(series_store):
+    print("\nPaired Sign Tests on Quality Score (higher score is better)")
+    print("-" * 100)
+    comparisons = [("dp", "fpt"), ("fpt", "greedy"), ("dp", "greedy")]
+
+    for num_registers in REGISTER_BUDGETS:
+        print(f"Register budget {num_registers}:")
+        for better, worse in comparisons:
+            better_values = []
+            worse_values = []
+            for name, _, _, _, _, _, _ in WORKLOADS:
+                better_values.extend(series_store[num_registers][name][better]["score"])
+                worse_values.extend(series_store[num_registers][name][worse]["score"])
+
+            p_value, wins_better, wins_worse, non_ties = _paired_sign_test(
+                better_values, worse_values
+            )
+            print(
+                f"  {ALGORITHMS[better]['label']} vs {ALGORITHMS[worse]['label']}: "
+                f"wins={wins_better}-{wins_worse}, n={non_ties}, p={p_value:.6f}"
+            )
+
+
+def _print_workload_report(summary, num_registers):
+    print(f"\nDetailed workload report for register budget {num_registers}")
+    print("-" * 100)
+    for name, _, _, _, _, _, _ in WORKLOADS:
+        line_parts = [name + ":"]
+        for algorithm in ALGORITHMS:
+            spills = summary[num_registers][name][algorithm]["spills"]
+            runtime = summary[num_registers][name][algorithm]["time"]
+            line_parts.append(
+                f"{ALGORITHMS[algorithm]['label']}(spills={spills['mean']:.2f}±{spills['ci95']:.2f}, "
+                f"time={runtime['mean']:.6f}s±{runtime['ci95']:.6f})"
+            )
+        print(" ".join(line_parts))
+
+
+def _print_budget_summary(summary):
+    print("\nBudget sweep summary (means across workloads)")
+    print("-" * 100)
+    for num_registers in REGISTER_BUDGETS:
+        print(f"Registers={num_registers}")
+        for algorithm in ALGORITHMS:
+            mean_spills = statistics.mean(
+                summary[num_registers][name][algorithm]["spills"]["mean"]
+                for name, _, _, _, _, _, _ in WORKLOADS
+            )
+            mean_time = statistics.mean(
+                summary[num_registers][name][algorithm]["time"]["mean"]
+                for name, _, _, _, _, _, _ in WORKLOADS
+            )
+            print(
+                f"  {ALGORITHMS[algorithm]['label']}: "
+                f"avg_spills={mean_spills:.2f}, avg_time={mean_time:.6f}s"
+            )
+
+
+def _plot_focus_budget(summary, num_registers, epochs):
+    names = [name for name, _, _, _, _, _, _ in WORKLOADS]
+    x = list(range(len(names)))
     width = 0.24
-
-    greedy_time = [result["greedy"]["time"] for result in averaged_results]
-    fpt_time = [result["fpt"]["time"] for result in averaged_results]
-    dp_time = [result["dp"]["time"] for result in averaged_results]
-
-    greedy_spills = [result["greedy"]["spills"] for result in averaged_results]
-    fpt_spills = [result["fpt"]["spills"] for result in averaged_results]
-    dp_spills = [result["dp"]["spills"] for result in averaged_results]
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 9))
 
-    ax1.bar([i - width for i in x], greedy_time, width=width, label="Greedy", color="#1f77b4")
-    ax1.bar(x, fpt_time, width=width, label="FPT Random Walk", color="#ff7f0e")
-    ax1.bar([i + width for i in x], dp_time, width=width, label="DP B&B", color="#2ca02c")
+    for idx, algorithm in enumerate(ALGORITHMS):
+        offset = (idx - 1) * width
+        means_time = [summary[num_registers][name][algorithm]["time"]["mean"] for name in names]
+        ci_time = [summary[num_registers][name][algorithm]["time"]["ci95"] for name in names]
+        means_spills = [
+            summary[num_registers][name][algorithm]["spills"]["mean"] for name in names
+        ]
+        ci_spills = [
+            summary[num_registers][name][algorithm]["spills"]["ci95"] for name in names
+        ]
+        positions = [value + offset for value in x]
+
+        ax1.bar(
+            positions,
+            means_time,
+            width=width,
+            label=ALGORITHMS[algorithm]["label"],
+            color=ALGORITHMS[algorithm]["color"],
+            yerr=ci_time,
+            capsize=3,
+        )
+        ax2.bar(
+            positions,
+            means_spills,
+            width=width,
+            label=ALGORITHMS[algorithm]["label"],
+            color=ALGORITHMS[algorithm]["color"],
+            yerr=ci_spills,
+            capsize=3,
+        )
+
     ax1.set_yscale("log")
-    ax1.set_ylabel("Average runtime (seconds, log scale)")
-    ax1.set_title(f"Average Runtime Across {epochs} Epochs")
-    ax1.set_xticks(list(x))
+    ax1.set_ylabel("Runtime mean ± 95% CI (seconds, log scale)")
+    ax1.set_title(
+        f"Runtime by Workload at {num_registers} Registers ({epochs} Epochs, 95% CI)"
+    )
+    ax1.set_xticks(x)
     ax1.set_xticklabels(names, rotation=20, ha="right")
     ax1.grid(axis="y", alpha=0.25)
     ax1.legend(frameon=False)
 
-    ax2.bar([i - width for i in x], greedy_spills, width=width, label="Greedy", color="#1f77b4")
-    ax2.bar(x, fpt_spills, width=width, label="FPT Random Walk", color="#ff7f0e")
-    ax2.bar([i + width for i in x], dp_spills, width=width, label="DP B&B", color="#2ca02c")
-    ax2.set_ylabel("Average spills (lower is better)")
-    ax2.set_title(f"Average Spill Counts Across {epochs} Epochs")
-    ax2.set_xticks(list(x))
+    ax2.set_ylabel("Spills mean ± 95% CI (lower is better)")
+    ax2.set_title(
+        f"Spills by Workload at {num_registers} Registers ({epochs} Epochs, 95% CI)"
+    )
+    ax2.set_xticks(x)
     ax2.set_xticklabels(names, rotation=20, ha="right")
     ax2.grid(axis="y", alpha=0.25)
     ax2.legend(frameon=False)
 
     plt.tight_layout()
-    plt.show()
+
+
+def _plot_budget_sweep(summary, epochs):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+    for algorithm in ALGORITHMS:
+        mean_runtime_by_budget = []
+        mean_spills_by_budget = []
+        for num_registers in REGISTER_BUDGETS:
+            mean_runtime_by_budget.append(
+                statistics.mean(
+                    summary[num_registers][name][algorithm]["time"]["mean"]
+                    for name, _, _, _, _, _, _ in WORKLOADS
+                )
+            )
+            mean_spills_by_budget.append(
+                statistics.mean(
+                    summary[num_registers][name][algorithm]["spills"]["mean"]
+                    for name, _, _, _, _, _, _ in WORKLOADS
+                )
+            )
+
+        ax1.plot(
+            REGISTER_BUDGETS,
+            mean_runtime_by_budget,
+            marker="o",
+            linewidth=2,
+            label=ALGORITHMS[algorithm]["label"],
+            color=ALGORITHMS[algorithm]["color"],
+        )
+        ax2.plot(
+            REGISTER_BUDGETS,
+            mean_spills_by_budget,
+            marker="o",
+            linewidth=2,
+            label=ALGORITHMS[algorithm]["label"],
+            color=ALGORITHMS[algorithm]["color"],
+        )
+
+    ax1.set_title(f"Runtime Scaling vs Register Budget ({epochs} Epochs)")
+    ax1.set_xlabel("Physical registers available")
+    ax1.set_ylabel("Mean runtime across workloads (seconds)")
+    ax1.set_yscale("log")
+    ax1.grid(alpha=0.25)
+    ax1.legend(frameon=False)
+
+    ax2.set_title(f"Spill Scaling vs Register Budget ({epochs} Epochs)")
+    ax2.set_xlabel("Physical registers available")
+    ax2.set_ylabel("Mean spills across workloads")
+    ax2.grid(alpha=0.25)
+    ax2.legend(frameon=False)
+
+    plt.tight_layout()
 
 
 def main():
     print("\n" + "=" * 100)
-    print(f"MULTI-EPOCH ANALYSIS ({EPOCHS} epochs)")
+    print(f"RESEARCH-GRADE MULTI-EPOCH ANALYSIS ({EPOCHS} epochs)")
+    print(f"Register budgets: {REGISTER_BUDGETS}")
     print("=" * 100 + "\n")
 
-    all_epoch_results = []
+    series_store = _init_series_store()
     for epoch_index in range(EPOCHS):
         print(f"Epoch {epoch_index + 1}/{EPOCHS}")
-        all_epoch_results.append(_run_epoch(epoch_index))
+        for num_registers in REGISTER_BUDGETS:
+            epoch_results = _run_epoch(epoch_index, num_registers=num_registers)
+            _append_epoch_results(series_store, epoch_results, num_registers)
 
-    averaged_results = _aggregate_results(all_epoch_results)
+    summary = _aggregate_results(series_store)
 
-    print("\nAveraged Results")
-    print("-" * 100)
-    for result in averaged_results:
-        print(
-            f"{result['name']}: "
-            f"Greedy(spills={result['greedy']['spills']:.2f}, time={result['greedy']['time']:.6f}s), "
-            f"FPT(spills={result['fpt']['spills']:.2f}, time={result['fpt']['time']:.6f}s), "
-            f"DP(spills={result['dp']['spills']:.2f}, time={result['dp']['time']:.6f}s)"
-        )
-        greedy_score = _score(result["greedy"]["colored"], result["greedy"]["spills"])
-        fpt_score = _score(result["fpt"]["colored"], result["fpt"]["spills"])
-        dp_score = _score(result["dp"]["colored"], result["dp"]["spills"])
-        winner = max(
-            [("Greedy", greedy_score), ("FPT", fpt_score), ("DP", dp_score)],
-            key=lambda item: item[1],
-        )[0]
-        print(f"  Average winner: {winner}")
+    _print_workload_report(summary, num_registers=FOCUS_BUDGET)
+    _print_budget_summary(summary)
+    _run_significance_report(series_store)
 
-    _plot_average_results(averaged_results, EPOCHS)
+    _plot_focus_budget(summary, num_registers=FOCUS_BUDGET, epochs=EPOCHS)
+    _plot_budget_sweep(summary, epochs=EPOCHS)
+    plt.show()
 
 
 if __name__ == "__main__":

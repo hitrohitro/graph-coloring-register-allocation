@@ -373,6 +373,31 @@ Choose your algorithm based on constraints:
 | **AOT/Offline**      | DP                   | Quality critical; time constraints relaxed; whole-program optimization          |
 | **Unknown/Tests**    | Benchmark / Analysis | Run all three, then inspect averaged behavior over multiple seeds               |
 
+## Academic Integrity And Authorship
+
+This project can be used ethically in an academic setting if you keep authorship and disclosure clear.
+
+### Recommended Practice
+
+- Own the technical decisions: problem framing, experiment design, metric choices, and interpretation of results.
+- Understand and be able to explain every part of the code and every figure.
+- Keep an explicit disclosure of AI assistance in your report.
+- Follow your course policy for tool usage and citation requirements.
+
+### Suggested Disclosure Statement
+
+Use a short statement such as:
+
+"AI tooling (GitHub Copilot Chat) was used as a programming assistant for iterative code drafting and refactoring. All final design decisions, experiment setup, validation, and analysis were performed and verified by the student."
+
+For a ready-to-use report structure, use `docs/REPORT_TEMPLATE.md`.
+
+### Authorship Boundary
+
+- Your ownership is strongest when the scientific contribution is yours.
+- The core contribution should be your hypothesis, method choices, evaluation protocol, and conclusions.
+- If an assistant proposes code, treat it as a draft and verify it before claiming results.
+
 ## Extending the Project
 
 ### 1. Add More Algorithms
@@ -428,10 +453,12 @@ Choose your algorithm based on constraints:
 ---
 
 **Created:** 2026-04-01  
-**Last Updated:** 2026-04-01  
-**Version:** 2.0
+**Last Updated:** 2026-04-02  
+**Version:** 2.1
 
 **Notable Version Updates:**
+
+- **v2.1** (Apr 2026): Added research-grade analysis workflow (multi-budget sweeps, confidence intervals, paired significance tests) and academic integrity guidance
 
 - **v2.0** (Apr 2026): Added DP branch-and-bound allocator, two-phase k/2 FPT strategy, reorganized to src/data/docs structure, unified IR workflow
 - **v1.0** (Initial): Greedy and basic FPT random walk implementation
