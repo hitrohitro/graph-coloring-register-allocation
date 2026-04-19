@@ -85,7 +85,7 @@ Quality Score                  10                   7
 - **Colors Used**: Number of distinct registers needed
 - **Quality Score**: Custom metric favoring fewer spills
 
-### Winner Determination
+### Result Selection
 
 - Lower spills = better (preferred 3x more than extra colored nodes)
 - Time matters for real-world compilation
@@ -201,7 +201,7 @@ from algorithm_comparison import compare_algorithms
 
 results = compare_algorithms(G, num_registers=4)
 
-# Step 3: Choose the winner
+# Step 3: Choose the better result
 if results["greedy"]["num_spills"] <= results["fpt_random_walk"]["num_spills"]:
     print("Use Greedy algorithm results")
     assignment = results["greedy"]["assignment"]

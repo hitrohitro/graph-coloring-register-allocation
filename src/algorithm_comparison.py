@@ -91,20 +91,20 @@ def compare_algorithms(graph, num_registers=4, verbose=True, include_dp=True):
             
             print(f"{'Quality Score':<25} {greedy_quality:<20} {fpt_quality:<20} {dp_quality:<20}")
             
-            # Determine winner
+            # Determine best result
             scores = {
                 "Greedy": greedy_quality,
                 "FPT Random Walk": fpt_quality,
                 "DP B&B": dp_quality,
             }
-            winner = max(scores, key=scores.get)
+            best_method = max(scores, key=scores.get)
             
             print("\n" + "-" * 90)
-            print(f"WINNER: {winner} Algorithm")
-            if scores[winner] == greedy_quality and winner == "Greedy":
+            print(f"BEST RESULT: {best_method} Algorithm")
+            if scores[best_method] == greedy_quality and best_method == "Greedy":
                 print("Reason: Best quality coloring with fastest execution time")
             else:
-                print(f"Reason: Best quality score ({scores[winner]} points)")
+                print(f"Reason: Best quality score ({scores[best_method]} points)")
             print("=" * 90 + "\n")
         else:
             print(f"\n{'Metric':<30} {'Greedy':<20} {'FPT Random Walk':<20}")
@@ -120,7 +120,7 @@ def compare_algorithms(graph, num_registers=4, verbose=True, include_dp=True):
             
             print(f"{'Quality Score':<30} {greedy_quality:<20} {fpt_quality:<20}")
             
-            # Determine winner
+            # Determine best result
             greedy_wins = (
                 (results['greedy']['num_spills'] < results['fpt_random_walk']['num_spills']) +
                 (greedy_time < fpt_time) +
@@ -129,10 +129,10 @@ def compare_algorithms(graph, num_registers=4, verbose=True, include_dp=True):
             
             print("\n" + "-" * 70)
             if greedy_wins >= 2:
-                print("WINNER: Greedy Algorithm")
+                print("BEST RESULT: Greedy Algorithm")
                 print("Reason: Better overall performance on this instance")
             elif greedy_wins == 0:
-                print("WINNER: FPT Random Walk Algorithm")
+                print("BEST RESULT: FPT Random Walk Algorithm")
                 print("Reason: Better quality coloring with fewer spills")
             else:
                 print("RESULT: Trade-off between algorithms")

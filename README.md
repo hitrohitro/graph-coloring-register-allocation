@@ -267,7 +267,7 @@ Compares algorithms on:
 ### Benchmark Results (5 synthetic workloads)
 
 ```
-Workload                    Winner          Rationale
+Workload                    Best Result     Rationale
 ─────────────────────────────────────────────────────────
 BasicBlock-Light            FPT / Greedy    Simple; both fast, similar quality
 Branchy-Medium              FPT             Medium complexity; FPT sweet spot
@@ -275,7 +275,7 @@ Loop-Heavy                  DP              High interference; needs optimal
 Call-Intensive              FPT             Long liveness chains; FPT handles well
 HotPath-Large               DP              Dense graph; DP pruning effective
 
-Overall pattern: DP wins 4/5 workloads; use analysis.py for averaged results across seeds
+Overall pattern: DP is strongest on most workloads; use analysis.py for averaged results across seeds
 ```
 
 ### Scaling Behavior
@@ -331,6 +331,12 @@ Generates 5 workloads in-memory and prints comparison for:
 - Call-Intensive (function calls, long liveness)
 - HotPath-Large (large graph, realistic pressure)
 
+**Figure 1: Benchmark Output Results**
+
+![Benchmark Output Screenshot](resources/Figure_1.png)
+
+The above screenshot shows the comprehensive benchmark results comparing all three algorithms (Greedy, FPT Random Walk, and DP B&B) across different workload types with detailed metrics and analysis.
+
 **analysis.py** - Multi-epoch averaged benchmark analysis:
 
 ```bash
@@ -359,8 +365,14 @@ Colors Used                    4               4                4
 Quality Score                  6               8                10
 
 ----------------------------------------------------------------------
-WINNER: DP Branch-and-Bound (best allocation quality)
+BEST RESULT: DP Branch-and-Bound (best allocation quality)
 ```
+
+**Figure 2: Sample Output from main.py**
+
+![Main Output Screenshot](resources/Figure_2.png)
+
+The above screenshot shows the complete output from running `python main.py`, including liveness analysis, interference graph edges, and algorithm comparison metrics.
 
 ## Allocator Selection Guide
 

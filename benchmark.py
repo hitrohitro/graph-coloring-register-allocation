@@ -310,11 +310,11 @@ def run_benchmarks(num_registers=4, show_plots=True):
         dp_score = r['dp']['colored'] - 3 * r['dp']['spills']
         
         scores = [("Greedy", greedy_score), ("FPT", fpt_score), ("DP", dp_score)]
-        winner = max(scores, key=lambda x: x[1])[0]
+        best_method = max(scores, key=lambda x: x[1])[0]
         
-        if winner == "Greedy":
+        if best_method == "Greedy":
             greedy_wins += 1
-        elif winner == "FPT":
+        elif best_method == "FPT":
             fpt_wins += 1
         else:
             dp_wins += 1
@@ -323,7 +323,7 @@ def run_benchmarks(num_registers=4, show_plots=True):
         print(f"  Greedy: score={greedy_score}, time={r['greedy']['time']:.6f}s, spills={r['greedy']['spills']}")
         print(f"  FPT:    score={fpt_score}, time={r['fpt']['time']:.6f}s, spills={r['fpt']['spills']}")
         print(f"  DP:     score={dp_score}, time={r['dp']['time']:.6f}s, spills={r['dp']['spills']}")
-        print(f"  → Winner: {winner}\n")
+        print()
     
     print(f"Summary: Greedy {greedy_wins}, FPT {fpt_wins}, DP {dp_wins}")
     
